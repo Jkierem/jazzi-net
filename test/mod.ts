@@ -4,8 +4,10 @@ import * as R from '../core/router.ts'
 const port = 80
 
 const router = R.makeRouter()
-    ['|>'](R.get("/some", (req, r) => {
-        return r.respond(new Response("Hello World"))
+    ['|>'](R.useDebugRoute("/hello/:name/world","%method %route"))
+    ['|>'](R.get("/hello/:name/world", (req, r) => {
+        const { name } = req.params
+        return r.respond(`Hello ${name}!`)
     }))
 
 const config = S.makeConfig()

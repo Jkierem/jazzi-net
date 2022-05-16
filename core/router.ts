@@ -1,4 +1,4 @@
-import { Async as A, Either as E } from 'jazzi/mod.ts'
+import { Async as A } from 'jazzi/mod.ts'
 import type { AsyncUIO } from 'jazzi/Async/types.ts'
 
 export interface JazziRequest {
@@ -6,7 +6,7 @@ export interface JazziRequest {
     method: Method
     route: string
     params: Params
-    query: QueryParams
+    query: URLSearchParams
 }
 
 export interface Router {
@@ -18,55 +18,27 @@ export type Respond = { type: "respond", response: Response }
 export type Continue = { type: "continue" }
 export type RouteResult = Continue | Respond 
 
-export type QueryParams = Record<string, string>
 export type Params = Record<string, string>
 
 export const RouteResults = {
     continue: () => ({ type: "continue" } as RouteResult),
-    respond: (response: Response) => ({ type: "respond", response } as RouteResult)
+    respond: (body?: BodyInit | null | undefined, init?: ResponseInit | undefined) => ({ type: "respond", response: new Response(body, init) } as RouteResult),
+    respondWith: (response: Response) => ({ type: "respond", response } as RouteResult),
 }
 
 export type RouteHandle = (req: JazziRequest, ctor: typeof RouteResults) => RouteResult | Promise<RouteResult>
 
-const unhandledRoute = (route: string) => new Response(
-    JSON.stringify({ message: `${route} not allowed` }),
-    {
-        status: 405,
-        headers: {
-            "content-type": "application/json"
-        }
-    }
-)
-
-const routeRegexp = () => /https?:\/\/.*\/(?<route>[^\?]*)(\?(?<query>[^\?]*))?/
-type RegexResult = { route: string, query: string }
-const parseURL = (str: string) => {
-    return E.fromNullish(undefined, routeRegexp().exec(str))
-        .map(res => res.groups as RegexResult)
-}
-
-const parseQuery = (query: string) => Object.fromEntries(query.split("&")
-    .map(entry => entry.split("=") as [string, string])
-    .filter(([_, value]) => value && value.trim().length > 0))
+const unhandledRoute = () => new Response("404 Not Found", { status: 404 })
 
 const makeJazziRequest = (req: Request): JazziRequest => {
-    const base = {
+    const urlObj = new URL(req.url);
+    return {
         raw: req,
-        method: req.method as Method
+        method: req.method as Method,
+        route: urlObj.pathname,
+        query: urlObj.searchParams,
+        params: {}
     }
-
-    return parseURL(req.url)
-        .map(data => ({
-            ...base,
-            params: {},
-            query: parseQuery(data.query),
-            route: data.route
-        })).getRightOr({
-            ...base,
-            params: {},
-            query: {},
-            route: ""
-        })
 }
 
 export const makeRouter = () => A.Success({ 
@@ -78,7 +50,7 @@ export const makeRouter = () => A.Success({
                 return r.response
             }
         }
-        return unhandledRoute(req.url);
+        return unhandledRoute();
     }
 } as Router)
 
@@ -89,15 +61,28 @@ const Methods = [
 ] as const
 type Method = typeof Methods[number];
 
-const matchesPath = (path: string, route: string) => path === route
+const getRouteInfo = (path: string) => {
+    const regexp = path.replaceAll(/\/:[A-Za-z]*/gm, (m) => {
+        const p = m.slice(2).replace("/", "")
+        return `/(?<${p}>[A-Za-z0-9_.~%]*)`
+    })
+    return () => new RegExp(regexp)
+}
+
+const matchesPath = (reg: RegExp, route: string) => reg.test(route)
 
 const matchesMethod = (method: Method, received: Method) => 
     method === "*" || method === received
 
 const methodHandle = (method: Method) => (path: string, fn: RouteHandle) => (self: RouterAsync) => 
-    self.map(r => { 
+    self.map(r => {
+        const pathReg = getRouteInfo(path);
         r.queue.push((req, kls) => {
-            if( matchesMethod(method, req.method) && matchesPath(path, req.route)){
+            if( matchesMethod(method, req.method) && (path === "*" || matchesPath(pathReg(), req.route))){
+                req.params = path === "*" 
+                    ? {} 
+                    : pathReg().exec(req.route)?.groups ?? {};
+                req.params.toString = () => JSON.stringify(req.params)
                 return fn(req, kls);
             }
             return RouteResults.continue();
@@ -116,3 +101,23 @@ export const trace = methodHandle("TRACE")
 export const patch = methodHandle("PATCH")
 export const useRoute = (method: Method, path: string, fn: RouteHandle) => 
     methodHandle(method)(path, fn)
+
+export const useDebug = (format: string, logger=console.log) => 
+    useRoute("*", "*", (req, r) => {
+        const formatted = format.replaceAll(
+            /%[a-z]*/g,
+            (match) => `${req[match.replaceAll("%", "") as unknown as keyof JazziRequest]}`
+        )
+        logger(formatted)
+        return r.continue()
+    })
+
+export const useDebugRoute = (path: string, format: string, logger=console.log) => 
+    useRoute("*", path, (req, r) => {
+        const formatted = format.replaceAll(
+            /%[a-z]*/g,
+            (match) => `${req[match.replaceAll("%", "") as unknown as keyof JazziRequest]}`
+        )
+        logger(formatted)
+        return r.continue()
+    })
