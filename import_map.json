@@ -1,6 +1,6 @@
 {
     "imports": {
-        "jazzi/": "https://deno.land/x/jazzi@v3.0.3/",
-        "deno/": "https://deno.land/std@0.137.0/"
+        "jazzi/": "https://deno.land/x/jazzi@v3.0.4/",
+        "deno/": "https://deno.land/std@0.140.0/"
     }
 }

@@ -1,10 +1,12 @@
-import { Async as A } from 'jazzi/mod.ts'
+import { Async as A, Maybe as M, Either as E } from 'jazzi/mod.ts'
 import type { AsyncUIO } from 'jazzi/Async/types.ts'
+import { Status, STATUS_TEXT } from 'deno/http/http_status.ts'
 
 export interface JazziRequest {
     raw: Request
+    hostname: string
     method: Method
-    route: string
+    pathname: string
     params: Params
     query: URLSearchParams
 }
@@ -28,14 +30,15 @@ export const RouteResults = {
 
 export type RouteHandle = (req: JazziRequest, ctor: typeof RouteResults) => RouteResult | Promise<RouteResult>
 
-const unhandledRoute = () => new Response("404 Not Found", { status: 404 })
+const unhandledRoute = () => new Response("404 Not Found", { status: 404, statusText: "Not Found" })
 
 const makeJazziRequest = (req: Request): JazziRequest => {
     const urlObj = new URL(req.url);
     return {
         raw: req,
+        hostname: urlObj.hostname,
         method: req.method as Method,
-        route: urlObj.pathname,
+        pathname: urlObj.pathname,
         query: urlObj.searchParams,
         params: {}
     }
@@ -61,34 +64,36 @@ const Methods = [
 ] as const
 type Method = typeof Methods[number];
 
-const getRouteInfo = (path: string) => {
-    const regexp = path.replaceAll(/\/:[A-Za-z]*/gm, (m) => {
-        const p = m.slice(2).replace("/", "")
-        return `/(?<${p}>[A-Za-z0-9_.~%]*)`
-    })
-    return () => new RegExp(regexp)
+const pathnameTest = (path: string) => (pathname: string) => {
+    const res = new URLPattern({
+        pathname: path,
+        protocol: "*",
+        hostname: "*"
+    }).exec({ pathname })
+    return M.fromNullish(res)
 }
 
-const matchesPath = (reg: RegExp, route: string) => reg.test(route)
+const toParams = (p: URLPatternResult) => ({ ...p.pathname.groups, toString: () => JSON.stringify(p.pathname.groups) } as Record<string, string>)
 
-const matchesMethod = (method: Method, received: Method) => 
-    method === "*" || method === received
+const methodTest = (method: Method) => (received: Method) => M.fromFalsy(method === "*" || method === received)
 
-const methodHandle = (method: Method) => (path: string, fn: RouteHandle) => (self: RouterAsync) => 
-    self.map(r => {
-        const pathReg = getRouteInfo(path);
-        r.queue.push((req, kls) => {
-            if( matchesMethod(method, req.method) && (path === "*" || matchesPath(pathReg(), req.route))){
-                req.params = path === "*" 
-                    ? {} 
-                    : pathReg().exec(req.route)?.groups ?? {};
-                req.params.toString = () => JSON.stringify(req.params)
-                return fn(req, kls);
-            }
-            return RouteResults.continue();
-        })
-        return r
+const methodHandle = (method: Method) => (path: string, fn: RouteHandle) => (self: RouterAsync) => {
+    const maybeMethod = methodTest(method)
+    const maybePathname = pathnameTest(path)
+    return self.map(r => {
+        const handle = (req: JazziRequest, kls: typeof RouteResults) => 
+            maybeMethod(req.method)
+                .chain(() => maybePathname(req.pathname))
+                .map(toParams)
+                .map((params) => fn({ ...req, params }, kls))
+                .onNone(() => RouteResults.continue())
+        
+        return {
+            handle: r.handle,
+            queue: [...r.queue, handle]
+        }
     })
+}
 
 export const get = methodHandle("GET")
 export const head = methodHandle("HEAD")
@@ -120,4 +125,24 @@ export const useDebugRoute = (path: string, format: string, logger=console.log) 
         )
         logger(formatted)
         return r.continue()
+    })
+
+const BadRequest = () => new Response("", { 
+    status: Status.BadRequest, 
+    statusText: STATUS_TEXT.get(Status.BadRequest)
+})
+
+type RegisterWebSocket = (socket: WebSocket) => void
+
+export const useWebSocket = (path: string, fn: RegisterWebSocket, onNotWebSocket: (req: JazziRequest) => Response = BadRequest) => 
+    useRoute("GET", path, (req) => {
+        const getUpgrade = (req: Request) => (req.headers.get('upgrade') || "").toLowerCase()
+        return E
+            .fromCondition((req) => getUpgrade(req) === "websocket", req.raw)
+            .map(req => {
+                const { socket, response } = Deno.upgradeWebSocket(req)
+                fn(socket)
+                return RouteResults.respondWith(response)
+            })
+            .getRightOr(() => RouteResults.respondWith(onNotWebSocket(req)))
     })

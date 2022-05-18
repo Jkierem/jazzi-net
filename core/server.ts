@@ -1,6 +1,5 @@
 import { Async as A } from 'jazzi/mod.ts'
 import type { Async, AsyncUIO as UIO } from 'jazzi/Async/types.ts'
-import type { Router } from './router.ts'
 
 export interface HandleEnv { 
     request: Request, 
@@ -9,29 +8,36 @@ export interface HandleEnv {
 
 export type Handle = Async<HandleEnv, never, Response>
 
-export interface ServerConfig {
+export interface HTTPConfig {
     port: number
     handle: Handle
+    onError?: (err: unknown, server: Deno.Listener) => void
 }
 
-export type HttpServer = Async<ServerConfig, unknown, void>
+export type HttpServer = Async<HTTPConfig, unknown, void>
 
-export const makeServer = (): HttpServer => A.from(async ({ port, handle }: ServerConfig) => {
+const handleConnectionWithHTTP = async (server: Deno.Listener, connection: Deno.Conn, handle: Handle) => {
+    const http = Deno.serveHttp(connection);
+    for await(const reqEvent of http){
+        reqEvent.respondWith(
+            handle.run({
+                request: reqEvent.request, 
+                server 
+            })
+        )
+    }
+}
+
+export const makeHTTP = (): HttpServer => A.from(async ({ port, handle, onError }: HTTPConfig) => {
     const server = Deno.listen({ port });
     for await(const connection of server){
-        const http = Deno.serveHttp(connection);
-        for await(const reqEvent of http){
-            await reqEvent.respondWith(
-                handle.run({ 
-                    request: reqEvent.request, 
-                    server 
-                })
-            )
+        try {
+            handleConnectionWithHTTP(server, connection, handle)
+        } catch(e) {
+            onError?.(e, server)
         }
     }
 })
-
-export const makeConfig = () => A.Success({})
 
 export const makeHandle = (fn: (req: Request, server: Deno.Listener) => Response | Promise<Response>) => A.pure({
     handle: A.from(({ request, server }: HandleEnv) => Promise.resolve(fn(request, server)))
@@ -45,14 +51,12 @@ export const makeSyncHandle = (fn: (req: Request, server: Deno.Listener) => Resp
     handle: A.from(({ request, server }: HandleEnv) => Promise.resolve(fn(request, server)))
 })
 
-export const withRouter = (routerAsync: UIO<Router>) => <R,E,A>(self: Async<R,E,A>) => routerAsync
-    .chain((router) => self.zipWith(makeHandle((req, server) => router.handle(req, server)), (a,b) => ({...a,...b})))
+export const withConfig = (config: UIO<HTTPConfig>) => <E,A>(self: Async<HTTPConfig,E,A>) => config.provideTo(self)
 
-export const withConfig = (config: UIO<ServerConfig>) => <E,A>(self: Async<ServerConfig,E,A>) => config.provideTo(self)
-
-export const withPort = (port: number) => <R,E,A>(self: Async<R,E,A>) => self.map(a => ({ ...a, port }))
-
-export const listen = (msg?: string) => <E>(self: Async<unknown, E, void>) => A
+export const listen = (msg?: string) => <E,A>(self: Async<unknown, E, A>) => A
     .of(() => (msg?.length ?? 0) > 0 && console.log(msg))
     .zipRight(self)
     .run()
+
+export const onConnectionError = <E0,A0>(fn: (e: unknown) => Async<unknown,E0,A0>) => <E,A>(self: Async<unknown, E, A>) => 
+    self.recover(fn)
