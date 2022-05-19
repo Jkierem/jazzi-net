@@ -11,15 +11,22 @@ export type Handle = Async<HandleEnv, never, Response>
 export interface HTTPConfig {
     port: number
     handle: Handle
+    hostname?: string
     onError?: (err: unknown, server: Deno.Listener) => void
 }
 
-export type HttpServer = Async<HTTPConfig, unknown, void>
+export interface HTTPSConfig extends HTTPConfig {
+    certFile: string,
+    keyFile: string,
+}
 
-const handleConnectionWithHTTP = async (server: Deno.Listener, connection: Deno.Conn, handle: Handle) => {
+export type HttpServer = Async<HTTPConfig, unknown, void>
+export type HttpsServer = Async<HTTPSConfig, unknown, void>
+
+const handleConnection = async (server: Deno.Listener, connection: Deno.Conn, handle: Handle) => {
     const http = Deno.serveHttp(connection);
     for await(const reqEvent of http){
-        reqEvent.respondWith(
+        await reqEvent.respondWith(
             handle.run({
                 request: reqEvent.request, 
                 server 
@@ -28,11 +35,27 @@ const handleConnectionWithHTTP = async (server: Deno.Listener, connection: Deno.
     }
 }
 
-export const makeHTTP = (): HttpServer => A.from(async ({ port, handle, onError }: HTTPConfig) => {
-    const server = Deno.listen({ port });
+export const makeServer = (): HttpServer => A.from(async ({ port, handle, hostname="0.0.0.0", onError }: HTTPConfig) => {
+    const server = Deno.listen({ port, hostname });
     for await(const connection of server){
         try {
-            handleConnectionWithHTTP(server, connection, handle)
+            handleConnection(server, connection, handle)
+        } catch(e) {
+            onError?.(e, server)
+        }
+    }
+})
+
+export const makeTLSServer = (): HttpsServer => A.from(async ({ port, handle, hostname="0.0.0.0", onError, certFile, keyFile }: HTTPSConfig) => {
+    const server = Deno.listenTls({ 
+        port,
+        hostname,
+        certFile,
+        keyFile
+    });
+    for await(const connection of server){
+        try {
+            handleConnection(server, connection, handle)
         } catch(e) {
             onError?.(e, server)
         }
@@ -51,7 +74,7 @@ export const makeSyncHandle = (fn: (req: Request, server: Deno.Listener) => Resp
     handle: A.from(({ request, server }: HandleEnv) => Promise.resolve(fn(request, server)))
 })
 
-export const withConfig = (config: UIO<HTTPConfig>) => <E,A>(self: Async<HTTPConfig,E,A>) => config.provideTo(self)
+export const withConfig = <R>(config: UIO<R>) => <E,A>(self: Async<R,E,A>) => config.provideTo(self)
 
 export const listen = (msg?: string) => <E,A>(self: Async<unknown, E, A>) => A
     .of(() => (msg?.length ?? 0) > 0 && console.log(msg))

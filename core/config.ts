@@ -11,3 +11,5 @@ export const withRouter = (routerAsync: UIO<Router>) => <R,E,A>(self: Async<R,E,
     .chain((router) => self.zipWith(makeHandle((req, server) => router.handle(req, server)), (a,b) => ({...a,...b})))
 
 export const withError = (onError: (e: unknown, server: Deno.Listener) => void) => <A>(self: UIO<A>) => self.map(c => ({ ...c, onError }))
+
+export const withCertificate = (data: { certFile: string, keyFile: string }) => <A>(self: UIO<A>) => self.map(c => ({ ...c, ...data }))

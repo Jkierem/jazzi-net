@@ -1,5 +1,5 @@
 {
-    "allow": ["net"],
+    "allow": ["net","read","write"],
     "scripts": {
         "test": "deno run --import-map='./import_map.json' ./test/mod.ts"
     }

@@ -1,9 +1,13 @@
 import { Async as A, Maybe as M, Either as E } from 'jazzi/mod.ts'
 import type { AsyncUIO } from 'jazzi/Async/types.ts'
-import { Status, STATUS_TEXT } from 'deno/http/http_status.ts'
+import { readableStreamFromReader } from "deno/streams/mod.ts";
+import { join } from "deno/path/mod.ts";
+import { walk } from "deno/fs/mod.ts"
+import { NotFound, BadRequest } from "./common.ts";
 
 export interface JazziRequest {
     raw: Request
+    url: URL,
     hostname: string
     method: Method
     pathname: string
@@ -30,12 +34,11 @@ export const RouteResults = {
 
 export type RouteHandle = (req: JazziRequest, ctor: typeof RouteResults) => RouteResult | Promise<RouteResult>
 
-const unhandledRoute = () => new Response("404 Not Found", { status: 404, statusText: "Not Found" })
-
 const makeJazziRequest = (req: Request): JazziRequest => {
     const urlObj = new URL(req.url);
     return {
         raw: req,
+        url: urlObj,
         hostname: urlObj.hostname,
         method: req.method as Method,
         pathname: urlObj.pathname,
@@ -53,7 +56,7 @@ export const makeRouter = () => A.Success({
                 return r.response
             }
         }
-        return unhandledRoute();
+        return NotFound();
     }
 } as Router)
 
@@ -127,14 +130,9 @@ export const useDebugRoute = (path: string, format: string, logger=console.log) 
         return r.continue()
     })
 
-const BadRequest = () => new Response("", { 
-    status: Status.BadRequest, 
-    statusText: STATUS_TEXT.get(Status.BadRequest)
-})
-
 type RegisterWebSocket = (socket: WebSocket) => void
 
-export const useWebSocket = (path: string, fn: RegisterWebSocket, onNotWebSocket: (req: JazziRequest) => Response = BadRequest) => 
+export const useWebSocket = (path: string, fn: RegisterWebSocket, onError: (req: JazziRequest) => Response = BadRequest) => 
     useRoute("GET", path, (req) => {
         const getUpgrade = (req: Request) => (req.headers.get('upgrade') || "").toLowerCase()
         return E
@@ -144,5 +142,48 @@ export const useWebSocket = (path: string, fn: RegisterWebSocket, onNotWebSocket
                 fn(socket)
                 return RouteResults.respondWith(response)
             })
-            .getRightOr(() => RouteResults.respondWith(onNotWebSocket(req)))
+            .getRightOr(() => RouteResults.respondWith(onError(req)))
+    })
+
+export const useStaticFolder = (path: string, folder: string, onError: (req: JazziRequest) => Response = NotFound) => 
+    useRoute("GET", path, async (req) => {
+        const prefix = path.replace("*", "");
+        let filePath = decodeURIComponent(join(folder, req.pathname.replace(prefix, "")));
+        const info = await Deno.lstat(filePath)
+        if(info.isDirectory){
+            const files = walk(filePath, { 
+                followSymlinks: false, 
+                includeFiles: true, 
+                includeDirs: false,
+                maxDepth: 1,
+            })
+            const indeces = []
+            for await(const f of files){
+                if(f.name.startsWith("index")){
+                    indeces.push(f)
+                }
+            }
+            indeces.sort((a,b) => {
+                if(a.name === "index.html"){
+                    return -1;
+                } else if(b.name === "index.html"){
+                    return 1;
+                } else {
+                    return  a.name < b.name ? -1 : 1;
+                }
+            })
+            filePath = join(filePath, indeces[0]?.name ?? "index.html");
+        } 
+
+        let file;
+        try {
+            file = await Deno.open(filePath, { read: true });
+        } catch {
+            return RouteResults.respondWith(onError(req));
+        }
+
+        const stream = readableStreamFromReader(file)
+
+        return RouteResults.respondWith(new Response(stream))
+
     })
