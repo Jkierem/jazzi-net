@@ -9,7 +9,7 @@ const printLn = (x: unknown) => Async.of(() => console.log(x))
 const publicFolder = join(Deno.cwd(), "test", "public")
 
 const router = R.makeRouter()
-    ['|>'](R.useDebugRoute("/home*","%method %pathname"))
+    ['|>'](R.useDebugRoute("*","%method %pathname"))
     ['|>'](R.get("/hello/:name/world", (req, r) => r.respond(`Hello ${req.params.name}!`)))
     ['|>'](R.useWebSocket("/ws", (socket) => {
         socket.onopen = () => console.log("ws open")

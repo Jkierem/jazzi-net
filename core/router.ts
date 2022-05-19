@@ -145,51 +145,95 @@ export const useWebSocket = (path: string, fn: RegisterWebSocket, onError: (req:
             .getRightOr(() => RouteResults.respondWith(onError(req)))
     })
 
-export const useStaticFolder = (path: string, folder: string, onError: (req: JazziRequest) => Response = NotFound) => 
-    useRoute("GET", path, async (req) => {
+
+type UnknownError = { type: "UnknownError", error: unknown }
+type DisallowedIndexResolution = { type: "DisallowedIndexResolution" }
+type StaticError = UnknownError | DisallowedIndexResolution
+
+type StaticOptions = {
+    onError?: (req: JazziRequest, reason: StaticError) => Response | Promise<Response>
+    resolveIndexFile?: (acceptHeader: string | null) => string | Promise<string>
+    allowIndexResolution?: boolean
+}
+
+export const useStaticFolder = (path: string, folder: string, opts: StaticOptions = {}) => {
+    const {
+        allowIndexResolution = true,
+        resolveIndexFile,
+        onError = NotFound,
+    } = opts;
+
+    return useRoute("GET", path, async (req) => {
         const prefix = path.replace("*", "");
         let filePath = decodeURIComponent(join(folder, req.pathname.replace(prefix, "")));
-        const info = await Deno.lstat(filePath)
+        let info;
+        try {
+            info = await Deno.lstat(filePath)
+        } catch(e) {
+            const res = await onError(req, { type: "UnknownError", error: e })
+            return RouteResults.respondWith(res);
+        }
         if(info.isDirectory){
-            const files = walk(filePath, { 
-                followSymlinks: false, 
-                includeFiles: true, 
-                includeDirs: false,
-                maxDepth: 1,
-            })
-            const indeces = []
-            for await(const f of files){
-                if(f.name.startsWith("index")){
-                    indeces.push(f)
-                }
-            }
-            const content = req.raw.headers.get("Accept")?.split(",") ?? ["text/plain"];
-            const extension = content
-                .map(x => getExtensionByMIME(x))
-                .find(m => m.isJust())
-                ?.get() ?? ".txt"
-            const defaultIndex = `index${extension}`;
-            indeces.sort((a,b) => {
-                if(a.name === defaultIndex){
-                    return -1;
-                } else if(b.name === defaultIndex){
-                    return 1;
+            if( allowIndexResolution ){
+                const acceptHeader = req.raw.headers.get("Accept");
+                if( resolveIndexFile ){
+                    const indexFile = await resolveIndexFile(acceptHeader)
+                    filePath = join(filePath, indexFile);
                 } else {
-                    return  a.name < b.name ? -1 : 1;
+                    const files = walk(filePath, { 
+                        followSymlinks: false, 
+                        includeFiles: true, 
+                        includeDirs: false,
+                        maxDepth: 1,
+                    })
+                    const indeces = []
+                    for await(const f of files){
+                        if(f.name.startsWith("index")){
+                            indeces.push(f)
+                        }
+                    }
+    
+                    const knownIndeces = (acceptHeader ?? "text/plain")
+                        .split(",")
+                        .map(x => x.split(";")[0])
+                        .map(x => getExtensionByMIME(x))
+                        .filter(x => x.isJust())
+                        .map(x => `index${x.get()}`)
+    
+                    indeces.sort((a,b) => {
+                        const aname = a.name;
+                        const bname = b.name;
+                        const isAKnown = knownIndeces.includes(aname)
+                        const isBKnown = knownIndeces.includes(bname)
+        
+                        if( isAKnown && isBKnown ){
+                            return knownIndeces.indexOf(aname) - knownIndeces.indexOf(bname);
+                        } else if(isAKnown && !isBKnown){
+                            return -1;
+                        } else if (!isAKnown && isBKnown){
+                            return 1;
+                        } else {
+                            return  a.name.localeCompare(b.name);
+                        }
+                    })
+                    filePath = join(filePath, indeces[0]?.name ?? "");
                 }
-            })
-            filePath = join(filePath, indeces[0]?.name ?? defaultIndex);
-        } 
+            } else {
+                const res = await onError(req, { type: "DisallowedIndexResolution" })
+                return RouteResults.respondWith(res)
+            }
+        }
 
         let file;
         try {
             file = await Deno.open(filePath, { read: true });
-        } catch {
-            return RouteResults.respondWith(onError(req));
+        } catch(e) {
+            const res = await onError(req, { type: "UnknownError", error: e })
+            return RouteResults.respondWith(res);
         }
 
         const stream = readableStreamFromReader(file)
 
         return RouteResults.respondWith(new Response(stream))
-
     })
+}
