@@ -3,7 +3,7 @@ import type { AsyncUIO } from 'jazzi/Async/types.ts'
 import { readableStreamFromReader } from "deno/streams/mod.ts";
 import { join } from "deno/path/mod.ts";
 import { walk } from "deno/fs/mod.ts"
-import { NotFound, BadRequest } from "./common.ts";
+import { NotFound, BadRequest, getExtensionByMIME } from "./common.ts";
 
 export interface JazziRequest {
     raw: Request
@@ -163,16 +163,22 @@ export const useStaticFolder = (path: string, folder: string, onError: (req: Jaz
                     indeces.push(f)
                 }
             }
+            const content = req.raw.headers.get("Accept")?.split(",") ?? ["text/plain"];
+            const extension = content
+                .map(x => getExtensionByMIME(x))
+                .find(m => m.isJust())
+                ?.get() ?? ".txt"
+            const defaultIndex = `index${extension}`;
             indeces.sort((a,b) => {
-                if(a.name === "index.html"){
+                if(a.name === defaultIndex){
                     return -1;
-                } else if(b.name === "index.html"){
+                } else if(b.name === defaultIndex){
                     return 1;
                 } else {
                     return  a.name < b.name ? -1 : 1;
                 }
             })
-            filePath = join(filePath, indeces[0]?.name ?? "index.html");
+            filePath = join(filePath, indeces[0]?.name ?? defaultIndex);
         } 
 
         let file;
