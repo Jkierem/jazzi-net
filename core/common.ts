@@ -1,5 +1,5 @@
-import { Maybe } from "jazzi/mod.ts"
-import { Status, STATUS_TEXT } from 'deno/http/http_status.ts'
+import { Maybe } from "./deps/jazzi/mod.ts"
+import { Status, STATUS_TEXT } from 'https://deno.land/std@0.140.0/http/http_status.ts'
 
 export const BadRequest = () => new Response("400 Bad Request",
  { 

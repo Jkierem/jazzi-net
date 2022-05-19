@@ -1,5 +1,5 @@
-import { Async as A } from 'jazzi/mod.ts'
-import type { Async, AsyncUIO as UIO } from 'jazzi/Async/types.ts'
+import { Async as A } from './deps/jazzi/mod.ts'
+import type { Async, AsyncUIO as UIO } from './deps/jazzi/async-type.ts'
 
 export interface HandleEnv { 
     request: Request, 

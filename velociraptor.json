@@ -1,6 +1,8 @@
 {
     "allow": ["net","read","write"],
     "scripts": {
-        "test": "deno run --import-map='./import_map.json' ./test/mod.ts"
+        "examples:websocket": "deno run ./examples/websocket/mod.ts",
+        "examples:file_server": "deno run ./examples/file_server/mod.ts",
+        "examples:hello_world": "deno run ./examples/hello_world/mod.ts"
     }
 }

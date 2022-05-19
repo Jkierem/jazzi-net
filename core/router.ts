@@ -1,8 +1,8 @@
-import { Async as A, Maybe as M, Either as E } from 'jazzi/mod.ts'
-import type { AsyncUIO } from 'jazzi/Async/types.ts'
-import { readableStreamFromReader } from "deno/streams/mod.ts";
-import { join } from "deno/path/mod.ts";
-import { walk } from "deno/fs/mod.ts"
+import { Async as A, Maybe as M, Either as E } from './deps/jazzi/mod.ts';
+import type { AsyncUIO } from './deps/jazzi/async-type.ts';
+import { readableStreamFromReader } from "./deps/deno/streams.ts";
+import { join } from "./deps/deno/path.ts";
+import { walk } from "./deps/deno/fs.ts";
 import { NotFound, BadRequest, getExtensionByMIME } from "./common.ts";
 
 export interface JazziRequest {
