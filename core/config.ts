@@ -13,3 +13,9 @@ export const withRouter = (routerAsync: UIO<Router>) => <R,E,A>(self: Async<R,E,
 export const withError = (onError: (e: unknown, server: Deno.Listener) => void) => <A>(self: UIO<A>) => self.map(c => ({ ...c, onError }))
 
 export const withCertificate = (data: { certFile: string, keyFile: string }) => <A>(self: UIO<A>) => self.map(c => ({ ...c, ...data }))
+
+export const withConnectionError = (onConnectionError: (e: unknown, server: Deno.Listener) => void) => <A>(self: UIO<A>) => 
+    self.map(c => ({ ...c, onConnectionError }))
+
+export const withHandle = (fn: (req: Request, server: Deno.Listener) => Response | Promise<Response>) => <R,E,A>(self: Async<R,E,A>) => 
+    self.map(c => ({ ...c, handle: makeHandle(fn) }))

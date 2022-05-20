@@ -47,7 +47,11 @@ const makeJazziRequest = (req: Request): JazziRequest => {
     }
 }
 
-export const makeRouter = () => A.Success({ 
+export type RouterOptions = {
+    fallback?: (req: Request) => Response | Promise<Response>
+}
+
+export const makeRouter = (opts: RouterOptions = {}) => A.Success({ 
     queue: [] as RouteHandle[],
     async handle(req){
         for(const h of this.queue){
@@ -56,7 +60,8 @@ export const makeRouter = () => A.Success({
                 return r.response
             }
         }
-        return NotFound();
+        const { fallback=NotFound } = opts
+        return await fallback(req);
     }
 } as Router)
 
