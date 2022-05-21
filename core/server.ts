@@ -2,8 +2,7 @@ import { Async as A } from './deps/jazzi/mod.ts'
 import type { Async, AsyncUIO as UIO } from './deps/jazzi/async-type.ts'
 
 export interface HandleEnv { 
-    request: Request, 
-    server: Deno.Listener
+    request: Request,
 }
 
 export type Handle = Async<HandleEnv, never, Response>
@@ -14,9 +13,18 @@ type CommonConfig = {
     hostname?: string
 }
 
+type Retry = { type: "retry" }
+type End = { type: "end" }
+type ErrorResolution = Retry | End
+
+export const ErrorResolutions = {
+    retry: () => ({ type: "retry" } as ErrorResolution),
+    end: () => ({ type: "end" } as ErrorResolution)
+} as const
+
 export interface HTTPConfig extends CommonConfig {
-    onError?: (err: unknown, server: Deno.Listener) => void
-    onConnectionError?: (err: unknown, server: Deno.Listener) => void
+    onError?: (err: unknown) => void
+    onConnectionError?: (err: unknown, res: typeof ErrorResolutions) => ErrorResolution | Promise<ErrorResolution>
 }
 
 export interface HTTPSConfig extends HTTPConfig {
@@ -27,51 +35,57 @@ export interface HTTPSConfig extends HTTPConfig {
 export type HttpServer = Async<HTTPConfig, unknown, void>
 export type HttpsServer = Async<HTTPSConfig, unknown, void>
 
-const handleConnection = async (server: Deno.Listener, connection: Deno.Conn, handle: Handle, onError?: (err: unknown, server: Deno.Listener) => void) => {
+const handleConnection = async (connection: Deno.Conn, handle: Handle, onError?: (err: unknown) => void) => {
     const http = Deno.serveHttp(connection);
     try {
         for await(const reqEvent of http){
             await reqEvent.respondWith(
                 handle.run({
-                    request: reqEvent.request, 
-                    server 
+                    request: reqEvent.request
                 })
             )
         }
     } catch(e) {
-        onError?.(e, server);
+        onError?.(e);
     }
 }
 
-export const makeServer = (): HttpServer => A.from(async ({ port, handle, hostname="0.0.0.0", ...errors}: HTTPConfig) => {
-    const server = Deno.listen({ port, hostname });
-    try {
-        for await(const connection of server){
-            handleConnection(server, connection, handle, errors.onError)
-        }
-    } catch(e) {
-        errors.onConnectionError?.(e, server);
+const internalMakeListener = (config: HTTPConfig | HTTPSConfig) => {
+    if( "certFile" in config ){
+        const { certFile, keyFile, port, hostname } = config
+        return Deno.listenTls({ certFile, keyFile, port, hostname })
+    } else {
+        const { port, hostname } = config
+        return Deno.listen({ port, hostname })
     }
-})
+}
 
-export const makeTLSServer = (): HttpsServer => A.from(async ({ port, handle, hostname="0.0.0.0", certFile, keyFile, ...errors }: HTTPSConfig) => {
-    const server = Deno.listenTls({ 
-        port,
-        hostname,
-        certFile,
-        keyFile
-    });
-    try {
-        for await(const connection of server){
-            handleConnection(server, connection, handle, errors.onError)
+const internalMakeServer = <T extends "tls" | "" = "">() => (): T extends "tls" ? HttpsServer : HttpServer => A.from(
+    async (config: HTTPConfig | HTTPSConfig) => {
+        const server = internalMakeListener(config);
+        const { handle, onError, onConnectionError } = config
+        let running = true;
+        while(running){
+            try {
+                const connection = await server.accept();
+                handleConnection(connection, handle, onError);
+            } catch(e) {
+                const resolution = await onConnectionError?.(e, ErrorResolutions);
+                if( resolution?.type === "end" ){
+                    running = false;
+                    server.close();
+                }
+            }
         }
-    } catch(e) {
-        errors.onConnectionError?.(e, server);
     }
-})
+)
 
-export const makeHandle = (fn: (req: Request, server: Deno.Listener) => Response | Promise<Response>) => A.pure({
-    handle: A.from(({ request, server }: HandleEnv) => Promise.resolve(fn(request, server)))
+export const makeServer = internalMakeServer()
+
+export const makeTLSServer = internalMakeServer<"tls">()
+
+export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.pure({
+    handle: A.from(({ request }: HandleEnv) => Promise.resolve(fn(request)))
 })
 
 export const withConfig = <R>(config: UIO<R>) => <E,A>(self: Async<R,E,A>) => config.provideTo(self)
