@@ -17,7 +17,7 @@ export interface JazziRequest {
 
 export interface Router {
     queue: RouteHandle[],
-    handle: (req: Request, server: Deno.Listener) => Promise<Response>
+    handle: (req: Request) => Promise<Response>
 }
 export type RouterAsync = AsyncUIO<Router>
 export type Respond = { type: "respond", response: Response }

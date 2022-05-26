@@ -11,8 +11,8 @@ interface HTTPConfig {
     port: number
     handle: Handle
     hostname?: string
-    onError?: (err: unknown, server: Deno.Listener) => void
-    onConnectionError?: (err: unknown, server: Deno.Listener) => void
+    onError?: (err: unknown) => void
+    onConnectionError?: (err: unknown) => void
 }
 
 interface HTTPSConfig {
@@ -21,22 +21,24 @@ interface HTTPSConfig {
     hostname?: string
     certFile: string,
     keyFile: string,
-    onError?: (err: unknown, server: Deno.Listener) => void
-    onConnectionError?: (err: unknown, server: Deno.Listener) => void
+    onError?: (err: unknown) => void
+    onConnectionError?: (err: unknown) => void
+    fallbackHttp?: boolean,
+    onFallback?: (e: unknown) => void
 }
 ```
 
-The config is passed to Deno.listen/Deno.listenTls. The onError callback is used when an error occurs on a request. OnConnection is used when listening to connection throws. All a server does is run the handle when a request is received, responding the request with what the handle resolves to.
+The config is passed to Deno.listen/Deno.listenTls. The onError callback is used when an error occurs on a request. OnConnection is used when listening to connection throws. HttpsServers have a special behaviour of falling back to an HttpServer if Deno.listenTls throws. This is opt-in through the fallbackHttp and onFallback options. If fallbackHttp is true, then if Deno.listenTls fails, it will call the onFallback function if present and then call Deno.listen with the same configuration. Otherwise, the process will simply throw the error that Deno.listenTls threw. All a server does is run the handle when a request is received, responding the request with what the handle resolves to.
 
 The package exposes the following functions:
 
 ```ts
-function makeServer(): Async<HTTPConfig, unknown, void>;
+function makeServer(): Async<HTTPConfig, unknown, HTTPConfig>;
 ``` 
 -  Creates an http server
 
 ```ts
-function makeTLSServer(): Async<HTTPSConfig, unknown, void>;
+function makeTLSServer(): Async<HTTPSConfig, unknown, HTTPSConfig>;
 ``` 
 -  Creates an https server
 
@@ -56,7 +58,7 @@ function withConfig<R>(config: Async<unknown, never, R>): <E,A>(self: Async<R,E,
 ```ts
 function listen(msg?: string, logger=console.log): <E,A>(self: Async<unknown, E, A>) => A
 ```
--  Runs a server, logging msg if supplied
+-  Runs a server, logging msg if supplied upon server startup. The default message is "Listening on port \[port\]...".
 
 A minimal server would look like this:
 
@@ -85,7 +87,7 @@ function makeConfig(): Async<unknwon, never, {}>;
 -  Creates an empty server configuration
 
 ```ts
-function withPort(port: number): <R,E,A>(self: Async<R,E,A>)Async<unknwon, never, A & { port: number }>;
+function withPort(port: number): <R,E,A>(self: Async<R,E,A>): Async<unknwon, never, A & { port: number }>;
 ``` 
 -  Adds a port to a config
 
