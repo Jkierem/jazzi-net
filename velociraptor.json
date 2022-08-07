@@ -3,6 +3,9 @@
     "scripts": {
         "examples:websocket": "deno run ./examples/websocket/mod.ts",
         "examples:file_server": "deno run ./examples/file_server/mod.ts",
-        "examples:hello_world": "deno run ./examples/hello_world/mod.ts"
+        "examples:hello_world": "deno run ./examples/hello_world/mod.ts",
+        "examples:error_handling": "deno run ./examples/error_handling/mod.ts",
+        "examples:use_jazzi_async": "deno run ./examples/use_jazzi_async/mod.ts",
+        "examples:continuations": "deno run ./examples/continuations/mod.ts"
     }
 }
