@@ -145,14 +145,17 @@ R.makeRouter()
 
 This creates a router that reponds hello to a GET request using the url to get the name. Route handlers can be async.
 
-Unlike the server handle, route handles must return a RouteResult. There are two possible results: Continue, Respond. Continue does not respond and passes control to the next handler. Respond breaks the chain and responds with the given Response inside the Respond structure. An object with constructors is passed as second argument to route handlers. There are three constructors for RouteResult: continue, respond, respondWith:
+Unlike the server handle, route handles must return a RouteResult. There are two possible results: Continue, Respond. Continue does not respond and passes control to the next handler, appending a continuation to the queue of continuations. A continuation is simply a function that receives a response and returns a response or a promise of a response. All continuations are applied in order, passing the result of the previous to the next. Respond breaks the chain and responds with the given Response inside the Respond structure. Thus, if a handler with a Continue result is added after a handler with a Respond, then the Respond will execute before the Continue handler, and the Continue handler will be ignored
+
+An object with constructors is passed as second argument to route handlers. There are four constructors for RouteResult: continue, continueWith, respond, respondWith:
 
 ```ts
 import * as R from 'https/deno.land/x/jazzi-net@1.0.0/core/router.ts';
 
-R.RouteResults.continue() // creates a continue result
-R.RouteResults.respondWith(new Response(...args)) // responds with given response
+R.RouteResults.continue() // creates a continue result with no continuation
+R.RouteResults.continueWith(x => x) // creates a continue result with the given continuation
 R.RouteResults.respond(...args) // shorthand for respondWith(new Response(...args))
+R.RouteResults.respondWith(new Response(...args)) // responds with given response
 ```
 
 For convenience, there are aliases for `useRoute` for common http methods:
@@ -169,6 +172,10 @@ R.connect(path, handler) // same as R.useRoute("CONNECT", path, handler)
 R.options(path, handler) // same as R.useRoute("OPTIONS", path, handler)
 R.trace(path, handler)   // same as R.useRoute("TRACE", path, handler)
 R.patch(path, handler)   // same as R.useRoute("PATCH", path, handler)
+
+// Other convenience operators
+R.all(path, handler)     // same as R.useRoute("*", path, handler)
+R.useAny(handler)        // same as R.useRoute("*", "*", handler)
 ```
 
 The path is matched using `URLPattern`. For more info go to [MDN URLPattern](https://developer.mozilla.org/en-US/docs/Web/API/URL_Pattern_API)
