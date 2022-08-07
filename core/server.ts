@@ -15,7 +15,7 @@ type CommonConfig = {
 
 type Retry = { type: "retry" }
 type End = { type: "end" }
-type ErrorResolution = Retry | End
+export type ErrorResolution = Retry | End
 
 export const ErrorResolutions = {
     retry: () => ({ type: "retry" } as ErrorResolution),
@@ -30,10 +30,13 @@ export interface HTTPConfig extends CommonConfig {
 export interface HTTPSConfig extends HTTPConfig {
     certFile: string,
     keyFile: string,
+    fallbackHttp?: boolean,
+    onFallback?: (e: unknown) => void
 }
 
-export type HttpServer = Async<HTTPConfig, unknown, void>
-export type HttpsServer = Async<HTTPSConfig, unknown, void>
+export type HttpServer = Async<HTTPConfig, unknown, HTTPConfig>
+export type HttpsServer = Async<HTTPSConfig, unknown, HTTPSConfig>
+export type Server = Async<unknown, unknown, HTTPConfig | HTTPSConfig>
 
 const handleConnection = async (connection: Deno.Conn, handle: Handle, onError?: (err: unknown) => void) => {
     const http = Deno.serveHttp(connection);
@@ -52,45 +55,62 @@ const handleConnection = async (connection: Deno.Conn, handle: Handle, onError?:
 
 const internalMakeListener = (config: HTTPConfig | HTTPSConfig) => {
     if( "certFile" in config ){
-        const { certFile, keyFile, port, hostname } = config
-        return Deno.listenTls({ certFile, keyFile, port, hostname })
+        const { certFile, keyFile, port, hostname, fallbackHttp, onFallback } = config
+        try {
+            return Deno.listenTls({ certFile, keyFile, port, hostname })
+        } catch(e) {
+            if( fallbackHttp ){
+                onFallback?.(e);
+                return Deno.listen({ port, hostname });
+            }
+            throw e;
+        }
     } else {
         const { port, hostname } = config
         return Deno.listen({ port, hostname })
     }
 }
-
-const internalMakeServer = <T extends "tls" | "" = "">() => (): T extends "tls" ? HttpsServer : HttpServer => A.from(
-    async (config: HTTPConfig | HTTPSConfig) => {
-        const server = internalMakeListener(config);
-        const { handle, onError, onConnectionError } = config
-        let running = true;
-        while(running){
-            try {
-                const connection = await server.accept();
-                handleConnection(connection, handle, onError);
-            } catch(e) {
-                const resolution = await onConnectionError?.(e, ErrorResolutions);
-                if( resolution?.type === "end" ){
-                    running = false;
-                    server.close();
-                }
-            }
-        }
-    }
-)
-
-export const makeServer = internalMakeServer()
-
-export const makeTLSServer = internalMakeServer<"tls">()
-
+/**
+ * Creates a HTTP server
+ */
+export const makeServer = () =>  A.of((_: HTTPConfig) => _)
+/**
+ * Creates a HTTPS server
+ */
+export const makeTLSServer = () =>  A.of((_: HTTPSConfig) => _)
+/**
+ * Creates a handle for a server
+ */
 export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.pure({
     handle: A.from(({ request }: HandleEnv) => Promise.resolve(fn(request)))
 })
-
+/**
+ * Supplies a config to a sever
+ */
 export const withConfig = <R>(config: UIO<R>) => <E,A>(self: Async<R,E,A>) => config.provideTo(self)
-
-export const listen = (msg?: string, logger=console.log) => <E,A>(self: Async<unknown, E, A>) => A
-    .of(() => (msg?.length ?? 0) > 0 && logger(msg))
-    .zipRight(self)
-    .run()
+/**
+ * Runs a server
+ */
+export const listen = (msg?: string, logger=console.log) => (self: Server) => 
+    self
+    .chain((config) => {
+        return A.from(async () => {
+            const server = internalMakeListener(config);
+            logger(msg ?? `Listening on port ${config.port}...`);
+            const { handle, onError, onConnectionError } = config
+            let running = true;
+            while(running){
+                try {
+                    const connection = await server.accept();
+                    handleConnection(connection, handle, onError);
+                } catch(e) {
+                    const resolution = await onConnectionError?.(e, ErrorResolutions);
+                    if( resolution?.type === "end" ){
+                        running = false;
+                        server.close();
+                    }
+                }
+            }
+        })
+    })
+    .run();

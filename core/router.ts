@@ -1,5 +1,5 @@
 import { Async as A, Maybe as M, Either as E } from './deps/jazzi/mod.ts';
-import type { AsyncUIO } from './deps/jazzi/async-type.ts';
+import type { AsyncUIO, Async } from './deps/jazzi/async-type.ts';
 import { readableStreamFromReader } from "./deps/deno/streams.ts";
 import { join } from "./deps/deno/path.ts";
 import { walk } from "./deps/deno/fs.ts";
@@ -17,17 +17,19 @@ export interface JazziRequest {
 
 export interface Router {
     queue: RouteHandle[],
-    handle: (req: Request, server: Deno.Listener) => Promise<Response>
+    handle: (req: Request) => Promise<Response>
 }
 export type RouterAsync = AsyncUIO<Router>
+export type Continuation = (fn: Response) => (Response | Promise<Response>)
 export type Respond = { type: "respond", response: Response }
-export type Continue = { type: "continue" }
+export type Continue = { type: "continue", continuation?: Continuation }
 export type RouteResult = Continue | Respond 
 
 export type Params = Record<string, string>
 
 export const RouteResults = {
-    continue: () => ({ type: "continue" } as RouteResult),
+    continue: () => ({ type: "continue", continuation: undefined } as RouteResult),
+    continueWith: (continuation: Continuation) => ({ type: "continue", continuation } as RouteResult),
     respond: (body?: BodyInit | null | undefined, init?: ResponseInit | undefined) => ({ type: "respond", response: new Response(body, init) } as RouteResult),
     respondWith: (response: Response) => ({ type: "respond", response } as RouteResult),
 }
@@ -51,17 +53,34 @@ export type RouterOptions = {
     fallback?: (req: Request) => Response | Promise<Response>
 }
 
+const applyContinuations = (continuations: Continuation[]) => async (r: Response): Promise<Response> => {
+    let curr = r;
+    for( const fn of continuations ){
+        curr = await fn(curr)
+    }
+    return curr
+}
+/**
+ * Creates an empty router
+ */
 export const makeRouter = (opts: RouterOptions = {}) => A.Success({ 
     queue: [] as RouteHandle[],
     async handle(req){
+        const continuations = [] as Continuation[]
+        const finishResponse = applyContinuations(continuations)
         for(const h of this.queue){
             const r = await h(makeJazziRequest(req), RouteResults)
-            if( r.type === "respond" ){
-                return r.response
+            switch(r.type){
+                case "continue":
+                    if (r.continuation)
+                        continuations.push(r.continuation)
+                break;
+                case "respond":
+                    return finishResponse(r.response)
             }
         }
         const { fallback=NotFound } = opts
-        return await fallback(req);
+        return finishResponse(await fallback(req));
     }
 } as Router)
 
@@ -103,40 +122,133 @@ const methodHandle = (method: Method) => (path: string, fn: RouteHandle) => (sel
     })
 }
 
+/**
+ * Adds a handler to a path that triggers for GET requests
+ */
 export const get = methodHandle("GET")
+/**
+ * Adds a handler to a path that triggers for HEAD requests
+ */
 export const head = methodHandle("HEAD")
+/**
+ * Adds a handler to a path that triggers for POST requests
+ */
 export const post = methodHandle("POST")
+/**
+ * Adds a handler to a path that triggers for PUT requests
+ */
 export const put = methodHandle("PUT")
+/**
+ * Adds a handler to a path that triggers for DELETE requests
+ */
 export const del = methodHandle("DELETE")
+/**
+ * Adds a handler to a path that triggers for CONNECT requests
+ */
 export const connect = methodHandle("CONNECT")
+/**
+ * Adds a handler to a path that triggers for OPTIONS requests
+ */
 export const options = methodHandle("OPTIONS")
+/**
+ * Adds a handler to a path that triggers for TRACE requests
+ */
 export const trace = methodHandle("TRACE")
+/**
+ * Adds a handler to a path that triggers for PATCH requests
+ */
 export const patch = methodHandle("PATCH")
+/**
+ * Adds a handler to a path that triggers for all kinds requests
+ */
+export const all = methodHandle("*")
+/**
+ * Adds a route handler for a given path with the given method
+ */
 export const useRoute = (method: Method, path: string, fn: RouteHandle) => 
     methodHandle(method)(path, fn)
+/**
+ * Adds a handler that is called on any request
+ */
+export const useAny = (fn: RouteHandle) => methodHandle("*")("*", fn)
 
+/**
+ * Used to send messages to a logger on every path and any request method when a request is received. 
+ * The format is used to create the message sent to the logger. 
+ * Interpolation of request information can be done via %attr,
+ * where %attr will be replaced by the string value of request[attr] 
+ * (i.e. %pathname with be replaced by request.pathname)
+ */
 export const useDebug = (format: string, logger=console.log) => 
     useRoute("*", "*", (req, r) => {
         const formatted = format.replaceAll(
             /%[a-z]*/g,
-            (match) => `${req[match.replaceAll("%", "") as unknown as keyof JazziRequest]}`
+            (match) => `${req[match.replaceAll("%", "") as keyof JazziRequest]}`
         )
         logger(formatted)
         return r.continue()
     })
 
+/**
+ * Used to send messages to a logger on a given path and any request method when a request is received. 
+ * The format is used to create the message sent to the logger. 
+ * Interpolation of request information can be done via %attr,
+ * where %attr will be replaced by the string value of request[attr] 
+ * (i.e. %pathname with be replaced by request.pathname)
+ */
 export const useDebugRoute = (path: string, format: string, logger=console.log) => 
     useRoute("*", path, (req, r) => {
         const formatted = format.replaceAll(
             /%[a-z]*/g,
-            (match) => `${req[match.replaceAll("%", "") as unknown as keyof JazziRequest]}`
+            (match) => `${req[match.replaceAll("%", "") as keyof JazziRequest]}`
         )
         logger(formatted)
         return r.continue()
     })
 
+/**
+ * Used to send messages to a logger on every path and any request method when a response is sent. 
+ * The format is used to create the message sent to the logger. 
+ * Interpolation of response information can be done via %attr,
+ * where %attr will be replaced by the string value of response[attr] 
+ * (i.e. %pathname with be replaced by response.pathname)
+ */    
+export const useDebugResponse = (format: string, logger=console.log) => 
+    useRoute("*", "*", (_, r) => {
+        return r.continueWith((res: Response) => {
+            const formatted = format.replaceAll(
+                /%[a-z]*/g,
+                (match) => `${res[match.replaceAll("%", "") as keyof Response]}`
+            )
+            logger(formatted)
+            return res
+        })
+    })
+
+/**
+ * Used to send messages to a logger on a given path and any request method when a response is sent. 
+ * The format is used to create the message sent to the logger. 
+ * Interpolation of response information can be done via %attr,
+ * where %attr will be replaced by the string value of response[attr] 
+ * (i.e. %pathname with be replaced by response.pathname)
+ */
+export const useDebugResponseRoute = (path: string, format: string, logger=console.log) => 
+    useRoute("*", path, (_, r) => {
+        return r.continueWith((res: Response) => {
+            const formatted = format.replaceAll(
+                /%[a-z]*/g,
+                (match) => `${res[match.replaceAll("%", "") as keyof Response]}`
+            )
+            logger(formatted)
+            return res
+        })
+    })
+
 type RegisterWebSocket = (socket: WebSocket) => void
 
+/**
+ * Handler for websocket connections. Will use secure websocket if called on a https server
+ */
 export const useWebSocket = (path: string, fn: RegisterWebSocket, onError: (req: JazziRequest) => Response = BadRequest) => 
     useRoute("GET", path, (req) => {
         const getUpgrade = (req: Request) => (req.headers.get('upgrade') || "").toLowerCase()
@@ -161,6 +273,9 @@ type StaticOptions = {
     allowIndexResolution?: boolean
 }
 
+/**
+ * Serves static files from a folder over http/s. Index resolution is enabled by default.
+ */
 export const useStaticFolder = (path: string, folder: string, opts: StaticOptions = {}) => {
     const {
         allowIndexResolution = true,
@@ -242,3 +357,17 @@ export const useStaticFolder = (path: string, folder: string, opts: StaticOption
         return RouteResults.respondWith(new Response(stream))
     })
 }
+
+export type HandleInput = {
+    results: typeof RouteResults,
+    request: JazziRequest
+}
+
+export type AsyncHandle = Async<HandleInput, never, RouteResult>
+/**
+ * Similar to useRoute but receives a AsyncHandle instead of a function. 
+ * An AsyncHandle is a Jazzi Async with the arguments of a route handler function as environment, 
+ * and the result is a RouteResult
+ */
+export const useAsync = (method: Method, path: string, self: AsyncHandle) =>
+    methodHandle(method)(path, (request, results) => self.run({ results, request }))

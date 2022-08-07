@@ -11,8 +11,8 @@ interface HTTPConfig {
     port: number
     handle: Handle
     hostname?: string
-    onError?: (err: unknown, server: Deno.Listener) => void
-    onConnectionError?: (err: unknown, server: Deno.Listener) => void
+    onError?: (err: unknown) => void
+    onConnectionError?: (err: unknown) => void
 }
 
 interface HTTPSConfig {
@@ -21,22 +21,24 @@ interface HTTPSConfig {
     hostname?: string
     certFile: string,
     keyFile: string,
-    onError?: (err: unknown, server: Deno.Listener) => void
-    onConnectionError?: (err: unknown, server: Deno.Listener) => void
+    onError?: (err: unknown) => void
+    onConnectionError?: (err: unknown) => void
+    fallbackHttp?: boolean,
+    onFallback?: (e: unknown) => void
 }
 ```
 
-The config is passed to Deno.listen/Deno.listenTls. The onError callback is used when an error occurs on a request. OnConnection is used when listening to connection throws. All a server does is run the handle when a request is received, responding the request with what the handle resolves to.
+The config is passed to Deno.listen/Deno.listenTls. The onError callback is used when an error occurs on a request. OnConnection is used when listening to connection throws. HttpsServers have a special behaviour of falling back to an HttpServer if Deno.listenTls throws. This is opt-in through the fallbackHttp and onFallback options. If fallbackHttp is true, then if Deno.listenTls fails, it will call the onFallback function if present and then call Deno.listen with the same configuration. Otherwise, the process will simply throw the error that Deno.listenTls threw. All a server does is run the handle when a request is received, responding the request with what the handle resolves to.
 
 The package exposes the following functions:
 
 ```ts
-function makeServer(): Async<HTTPConfig, unknown, void>;
+function makeServer(): Async<HTTPConfig, unknown, HTTPConfig>;
 ``` 
 -  Creates an http server
 
 ```ts
-function makeTLSServer(): Async<HTTPSConfig, unknown, void>;
+function makeTLSServer(): Async<HTTPSConfig, unknown, HTTPSConfig>;
 ``` 
 -  Creates an https server
 
@@ -56,7 +58,7 @@ function withConfig<R>(config: Async<unknown, never, R>): <E,A>(self: Async<R,E,
 ```ts
 function listen(msg?: string, logger=console.log): <E,A>(self: Async<unknown, E, A>) => A
 ```
--  Runs a server, logging msg if supplied
+-  Runs a server, logging msg if supplied upon server startup. The default message is "Listening on port \[port\]...".
 
 A minimal server would look like this:
 
@@ -85,7 +87,7 @@ function makeConfig(): Async<unknwon, never, {}>;
 -  Creates an empty server configuration
 
 ```ts
-function withPort(port: number): <R,E,A>(self: Async<R,E,A>)Async<unknwon, never, A & { port: number }>;
+function withPort(port: number): <R,E,A>(self: Async<R,E,A>): Async<unknwon, never, A & { port: number }>;
 ``` 
 -  Adds a port to a config
 
@@ -112,6 +114,12 @@ function withConnectionError(onConnectionError: (e: unknown, server: Deno.Listen
 ```
 
 - Add error handlers to a config
+
+```ts
+function withHttpFallback = (onFallback?: (e: unknown) => void) => <A>(self: UIO<A>) => Async<unknown, never, A & { onFallback: (e: unknown) => void, fallbackHttp: true }>
+```
+
+- Sets the callback to call when creating a HTTPS server fails. Settings this option enables falling back to HTTP  when HTTPS creation fails.
 
 A minimal server using config would look like this:
 
@@ -143,14 +151,17 @@ R.makeRouter()
 
 This creates a router that reponds hello to a GET request using the url to get the name. Route handlers can be async.
 
-Unlike the server handle, route handles must return a RouteResult. There are two possible results: Continue, Respond. Continue does not respond and passes control to the next handler. Respond breaks the chain and responds with the given Response inside the Respond structure. An object with constructors is passed as second argument to route handlers. There are three constructors for RouteResult: continue, respond, respondWith:
+Unlike the server handle, route handles must return a RouteResult. There are two possible results: Continue, Respond. Continue does not respond and passes control to the next handler, appending a continuation to the queue of continuations. A continuation is simply a function that receives a response and returns a response or a promise of a response. All continuations are applied in order, passing the result of the previous to the next. Respond breaks the chain and responds with the given Response inside the Respond structure. Thus, if a handler with a Continue result is added after a handler with a Respond, then the Respond will execute before the Continue handler, and the Continue handler will be ignored
+
+An object with constructors is passed as second argument to route handlers. There are four constructors for RouteResult: continue, continueWith, respond, respondWith:
 
 ```ts
 import * as R from 'https/deno.land/x/jazzi-net@1.0.0/core/router.ts';
 
-R.RouteResults.continue() // creates a continue result
-R.RouteResults.respondWith(new Response(...args)) // responds with given response
+R.RouteResults.continue() // creates a continue result with no continuation
+R.RouteResults.continueWith(x => x) // creates a continue result with the given continuation
 R.RouteResults.respond(...args) // shorthand for respondWith(new Response(...args))
+R.RouteResults.respondWith(new Response(...args)) // responds with given response
 ```
 
 For convenience, there are aliases for `useRoute` for common http methods:
@@ -167,6 +178,10 @@ R.connect(path, handler) // same as R.useRoute("CONNECT", path, handler)
 R.options(path, handler) // same as R.useRoute("OPTIONS", path, handler)
 R.trace(path, handler)   // same as R.useRoute("TRACE", path, handler)
 R.patch(path, handler)   // same as R.useRoute("PATCH", path, handler)
+
+// Other convenience operators
+R.all(path, handler)     // same as R.useRoute("*", path, handler)
+R.useAny(handler)        // same as R.useRoute("*", "*", handler)
 ```
 
 The path is matched using `URLPattern`. For more info go to [MDN URLPattern](https://developer.mozilla.org/en-US/docs/Web/API/URL_Pattern_API)
@@ -230,3 +245,5 @@ S.makeServer()
 ['|>'](S.withConfig(config))
 ['|>'](S.listen(`Listening on port 3000`))
 ```
+
+Check the examples folder for common use cases
