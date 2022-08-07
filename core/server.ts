@@ -70,17 +70,27 @@ const internalMakeListener = (config: HTTPConfig | HTTPSConfig) => {
         return Deno.listen({ port, hostname })
     }
 }
-
+/**
+ * Creates a HTTP server
+ */
 export const makeServer = () =>  A.of((_: HTTPConfig) => _)
-
+/**
+ * Creates a HTTPS server
+ */
 export const makeTLSServer = () =>  A.of((_: HTTPSConfig) => _)
-
+/**
+ * Creates a handle for a server
+ */
 export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.pure({
     handle: A.from(({ request }: HandleEnv) => Promise.resolve(fn(request)))
 })
-
+/**
+ * Supplies a config to a sever
+ */
 export const withConfig = <R>(config: UIO<R>) => <E,A>(self: Async<R,E,A>) => config.provideTo(self)
-
+/**
+ * Runs a server
+ */
 export const listen = (msg?: string, logger=console.log) => (self: Server) => 
     self
     .chain((config) => {

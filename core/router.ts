@@ -60,7 +60,9 @@ const applyContinuations = (continuations: Continuation[]) => async (r: Response
     }
     return curr
 }
-
+/**
+ * Creates an empty router
+ */
 export const makeRouter = (opts: RouterOptions = {}) => A.Success({ 
     queue: [] as RouteHandle[],
     async handle(req){
@@ -362,6 +364,10 @@ export type HandleInput = {
 }
 
 export type AsyncHandle = Async<HandleInput, never, RouteResult>
-
+/**
+ * Similar to useRoute but receives a AsyncHandle instead of a function. 
+ * An AsyncHandle is a Jazzi Async with the arguments of a route handler function as environment, 
+ * and the result is a RouteResult
+ */
 export const useAsync = (method: Method, path: string, self: AsyncHandle) =>
     methodHandle(method)(path, (request, results) => self.run({ results, request }))
