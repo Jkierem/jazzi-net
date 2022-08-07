@@ -6,6 +6,6 @@
         "examples:hello_world": "deno run ./examples/hello_world/mod.ts",
         "examples:error_handling": "deno run ./examples/error_handling/mod.ts",
         "examples:use_jazzi_async": "deno run ./examples/use_jazzi_async/mod.ts",
-        "examples:middleware": "deno run ./examples/middleware_like/mod.ts"
+        "examples:continuations": "deno run ./examples/continuations/mod.ts"
     }
 }

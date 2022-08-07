@@ -239,3 +239,5 @@ S.makeServer()
 ['|>'](S.withConfig(config))
 ['|>'](S.listen(`Listening on port 3000`))
 ```
+
+Check the examples folder for common use cases
