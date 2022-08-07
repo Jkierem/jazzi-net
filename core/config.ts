@@ -2,7 +2,7 @@ import { Async as A } from './deps/jazzi/mod.ts'
 import type { Async, AsyncUIO as UIO } from './deps/jazzi/async-type.ts'
 import type { Router } from './router.ts'
 import { makeHandle, ErrorResolutions, ErrorResolution } from './server.ts'
-import { simplify } from "./utils.ts"
+import { simplify } from "./common.ts"
 
 /**
  * Creates an empty configuration

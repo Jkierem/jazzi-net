@@ -1,5 +1,8 @@
 import { Maybe } from "./deps/jazzi/mod.ts"
+import type { Async } from './deps/jazzi/async-type.ts'
 import { Status, STATUS_TEXT } from 'https://deno.land/std@0.140.0/http/http_status.ts'
+
+export const simplify = <R,E,A>(self: Async<R,E,A>) => self.map<{ [P in keyof A]: A[P] }>(x => x)
 
 export const BadRequest = () => new Response("400 Bad Request",
  { 
