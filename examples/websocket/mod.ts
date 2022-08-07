@@ -5,6 +5,10 @@ import * as C from '../../core/config.ts'
 const port = 3000;
 
 const router = R.makeRouter()
+    ['|>'](R.get("/ws", (_, r) => {
+        // Custom websocket verification would be here
+        return r.continue()
+    }))
     ['|>'](R.useWebSocket("/ws", (socket) => {
         socket.onopen = () => console.log("ws open")
         socket.onmessage = (e) => console.log("ws message:", e.data)

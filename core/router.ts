@@ -244,6 +244,9 @@ export const useDebugResponseRoute = (path: string, format: string, logger=conso
 
 type RegisterWebSocket = (socket: WebSocket) => void
 
+/**
+ * Handler for websocket connections. Will use secure websocket if called on a https server
+ */
 export const useWebSocket = (path: string, fn: RegisterWebSocket, onError: (req: JazziRequest) => Response = BadRequest) => 
     useRoute("GET", path, (req) => {
         const getUpgrade = (req: Request) => (req.headers.get('upgrade') || "").toLowerCase()
@@ -268,6 +271,9 @@ type StaticOptions = {
     allowIndexResolution?: boolean
 }
 
+/**
+ * Serves static files from a folder over http/s. Index resolution is enabled by default.
+ */
 export const useStaticFolder = (path: string, folder: string, opts: StaticOptions = {}) => {
     const {
         allowIndexResolution = true,

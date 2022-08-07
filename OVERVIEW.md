@@ -115,6 +115,12 @@ function withConnectionError(onConnectionError: (e: unknown, server: Deno.Listen
 
 - Add error handlers to a config
 
+```ts
+function withHttpFallback = (onFallback?: (e: unknown) => void) => <A>(self: UIO<A>) => Async<unknown, never, A & { onFallback: (e: unknown) => void, fallbackHttp: true }>
+```
+
+- Sets the callback to call when creating a HTTPS server fails. Settings this option enables falling back to HTTP  when HTTPS creation fails.
+
 A minimal server using config would look like this:
 
 ```ts
