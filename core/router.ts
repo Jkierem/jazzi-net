@@ -84,12 +84,12 @@ export const makeRouter = (opts: RouterOptions = {}) => A.Success({
     }
 } as Router)
 
-const Methods = [
+export const Methods = [
     "GET", "HEAD", "POST", 
     "PUT", "DELETE", "CONNECT", 
     "OPTIONS", "TRACE", "PATCH", "*"
 ] as const
-type Method = typeof Methods[number];
+export type Method = typeof Methods[number];
 
 const pathnameTest = (path: string) => (pathname: string) => {
     const res = new URLPattern({

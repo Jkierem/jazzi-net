@@ -1,1 +1,1 @@
-export { Maybe, Async, Either } from "https://deno.land/x/jazzi@v3.0.4/mod.ts"
+export { Maybe, Async, Either } from "https://deno.land/x/jazzi@v3.0.7/mod.ts"
