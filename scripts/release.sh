@@ -1,4 +1,4 @@
-git branch -d release
+git branch -D release
 git push origin --delete release
 git checkout -b release
 rm -rf ./examples
