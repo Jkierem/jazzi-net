@@ -1,5 +1,6 @@
-import { Async as A, Maybe as M, Either as E } from './deps/jazzi/mod.ts';
-import type { AsyncUIO, Async } from './deps/jazzi/async-type.ts';
+import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
+import * as M from "https://deno.land/x/jazzi@v4.0.0/Maybe/mod.ts"
+import * as E from "https://deno.land/x/jazzi@v4.0.0/Either/mod.ts"
 import { readableStreamFromReader } from "./deps/deno/streams.ts";
 import { join } from "./deps/deno/path.ts";
 import { walk } from "./deps/deno/fs.ts";
@@ -19,7 +20,7 @@ export interface Router {
     queue: RouteHandle[],
     handle: (req: Request) => Promise<Response>
 }
-export type RouterAsync = AsyncUIO<Router>
+export type RouterAsync = A.AsyncUIO<Router>
 export type Continuation = (fn: Response) => (Response | Promise<Response>)
 export type Respond = { type: "respond", response: Response }
 export type Continue = { type: "continue", continuation?: Continuation }
@@ -63,7 +64,7 @@ const applyContinuations = (continuations: Continuation[]) => async (r: Response
 /**
  * Creates an empty router
  */
-export const makeRouter = (opts: RouterOptions = {}) => A.Success({ 
+export const makeRouter = (opts: RouterOptions = {}) => A.Succeed({ 
     queue: [] as RouteHandle[],
     async handle(req){
         const continuations = [] as Continuation[]
@@ -107,19 +108,22 @@ const methodTest = (method: Method) => (received: Method) => M.fromFalsy(method 
 const methodHandle = (method: Method) => (path: string, fn: RouteHandle) => (self: RouterAsync) => {
     const maybeMethod = methodTest(method)
     const maybePathname = pathnameTest(path)
-    return self.map(r => {
+
+    return self
+    ['|>'](A.map(r => {
         const handle = (req: JazziRequest, kls: typeof RouteResults) => 
             maybeMethod(req.method)
-                .chain(() => maybePathname(req.pathname))
-                .map(toParams)
-                .map((params) => fn({ ...req, params }, kls))
-                .onNone(() => RouteResults.continue())
+                ['|>'](M.chain(() => maybePathname(req.pathname)))
+                ['|>'](M.map(toParams))
+                ['|>'](M.map((params) => fn({ ...req, params }, kls)))
+                ["|>"](M.toEither)
+                ['|>'](E.getOr(() => RouteResults.continue()))
         
         return {
             handle: r.handle,
             queue: [...r.queue, handle]
         }
-    })
+    }))
 }
 
 /**
@@ -252,14 +256,13 @@ type RegisterWebSocket = (socket: WebSocket) => void
 export const useWebSocket = (path: string, fn: RegisterWebSocket, onError: (req: JazziRequest) => Response = BadRequest) => 
     useRoute("GET", path, (req) => {
         const getUpgrade = (req: Request) => (req.headers.get('upgrade') || "").toLowerCase()
-        return E
-            .fromCondition((req) => getUpgrade(req) === "websocket", req.raw)
-            .map(req => {
+        return E.fromCondition((req) => getUpgrade(req) === "websocket", req.raw)
+            ['|>'](E.map(req => {
                 const { socket, response } = Deno.upgradeWebSocket(req)
                 fn(socket)
                 return RouteResults.respondWith(response)
-            })
-            .getRightOr(() => RouteResults.respondWith(onError(req)))
+            }))
+            ['|>'](E.getOr(() => RouteResults.respondWith(onError(req))))
     })
 
 
@@ -317,8 +320,8 @@ export const useStaticFolder = (path: string, folder: string, opts: StaticOption
                         .split(",")
                         .map(x => x.split(";")[0])
                         .map(x => getExtensionByMIME(x))
-                        .filter(x => x.isJust())
-                        .map(x => `index${x.get()}`)
+                        .filter(x => x['|>'](M.isJust))
+                        .map(x => `index${M.get(x)}`)
     
                     indeces.sort((a,b) => {
                         const aname = a.name;
@@ -363,11 +366,11 @@ export type HandleInput = {
     request: JazziRequest
 }
 
-export type AsyncHandle = Async<HandleInput, never, RouteResult>
+export type AsyncHandle = A.Async<HandleInput, unknown, RouteResult>
 /**
  * Similar to useRoute but receives a AsyncHandle instead of a function. 
  * An AsyncHandle is a Jazzi Async with the arguments of a route handler function as environment, 
  * and the result is a RouteResult
  */
 export const useAsync = (method: Method, path: string, self: AsyncHandle) =>
-    methodHandle(method)(path, (request, results) => self.run({ results, request }))
+    methodHandle(method)(path, (request, results) => self['|>'](A.runWith({ results, request })))

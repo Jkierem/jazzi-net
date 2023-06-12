@@ -1,8 +1,9 @@
-import { Maybe } from "./deps/jazzi/mod.ts"
-import type { Async } from './deps/jazzi/async-type.ts'
+import { Async, map } from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
+import { fromNullish } from "https://deno.land/x/jazzi@v4.0.0/Maybe/mod.ts"
 import { Status, STATUS_TEXT } from 'https://deno.land/std@0.140.0/http/http_status.ts'
 
-export const simplify = <R,E,A>(self: Async<R,E,A>) => self.map<{ [P in keyof A]: A[P] }>(x => x)
+export const simplify = <R,E,A>(self: Async<R,E,A>) => self
+    ["|>"](map<A, { [P in keyof A]: A[P] }>(x => x))
 
 export const BadRequest = () => new Response("400 Bad Request",
  { 
@@ -140,6 +141,6 @@ const MIMEs: Record<string, string> = {
     ".zip": "application/zip",
 };
 
-export const getMIMEByExtension = (ext: string) => Maybe.fromNullish(MIMEs[ext])
+export const getMIMEByExtension = (ext: string) => fromNullish(MIMEs[ext])
 
-export const getExtensionByMIME = (mime: string) => Maybe.fromNullish(Object.entries(MIMEs).find(([, m]) => m === mime)?.[0])
+export const getExtensionByMIME = (mime: string) => fromNullish(Object.entries(MIMEs).find(([, m]) => m === mime)?.[0])

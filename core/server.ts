@@ -1,11 +1,10 @@
-import { Async as A } from './deps/jazzi/mod.ts'
-import type { Async, AsyncUIO as UIO } from './deps/jazzi/async-type.ts'
+import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
 
 export interface HandleEnv { 
     request: Request,
 }
 
-export type Handle = Async<HandleEnv, never, Response>
+export type Handle = A.Async<HandleEnv, never, Response>
 
 type CommonConfig = {
     port: number
@@ -22,30 +21,30 @@ export const ErrorResolutions = {
     end: () => ({ type: "end" } as ErrorResolution)
 } as const
 
-export interface HTTPConfig extends CommonConfig {
+export type HTTPConfig = CommonConfig & {
     onError?: (err: unknown) => void
     onConnectionError?: (err: unknown, res: typeof ErrorResolutions) => ErrorResolution | Promise<ErrorResolution>
 }
 
-export interface HTTPSConfig extends HTTPConfig {
+export type HTTPSConfig = HTTPConfig & {
     certFile: string,
     keyFile: string,
     fallbackHttp?: boolean,
     onFallback?: (e: unknown) => void
 }
 
-export type HttpServer = Async<HTTPConfig, unknown, HTTPConfig>
-export type HttpsServer = Async<HTTPSConfig, unknown, HTTPSConfig>
-export type Server = Async<unknown, unknown, HTTPConfig | HTTPSConfig>
+export type HttpServer = A.Async<HTTPConfig, unknown, HTTPConfig>
+export type HttpsServer = A.Async<HTTPSConfig, unknown, HTTPSConfig>
+export type Server = A.Async<unknown, unknown, HTTPConfig | HTTPSConfig>
 
 const handleConnection = async (connection: Deno.Conn, handle: Handle, onError?: (err: unknown) => void) => {
     const http = Deno.serveHttp(connection);
     try {
         for await(const reqEvent of http){
             await reqEvent.respondWith(
-                handle.run({
+                handle['|>'](A.runWith({
                     request: reqEvent.request
-                })
+                }))
             )
         }
     } catch(e) {
@@ -73,27 +72,30 @@ const internalMakeListener = (config: HTTPConfig | HTTPSConfig) => {
 /**
  * Creates a HTTP server
  */
-export const makeServer = () =>  A.of((_: HTTPConfig) => _)
+export const makeServer = () =>  A.require<HTTPConfig>()
 /**
  * Creates a HTTPS server
  */
-export const makeTLSServer = () =>  A.of((_: HTTPSConfig) => _)
+export const makeTLSServer = () =>  A.require<HTTPSConfig>()
 /**
  * Creates a handle for a server
  */
-export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.pure({
+export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.of({
     handle: A.from(({ request }: HandleEnv) => Promise.resolve(fn(request)))
 })
+
+export type Config = HTTPConfig | HTTPSConfig
 /**
  * Supplies a config to a sever
  */
-export const withConfig = <R>(config: UIO<R>) => <E,A>(self: Async<R,E,A>) => config.provideTo(self)
+export const withConfig = (config: A.AsyncUIO<Config>) => (self: A.AsyncRIO<Config, Config>) => config
+    ['|>'](A.chain(c => self["|>"](A.provide(c))))
 /**
  * Runs a server
  */
 export const listen = (msg?: string, logger=console.log) => (self: Server) => 
     self
-    .chain((config) => {
+    ['|>'](A.chain((config) => {
         return A.from(async () => {
             const server = internalMakeListener(config);
             logger(msg ?? `Listening on port ${config.port}...`);
@@ -112,5 +114,5 @@ export const listen = (msg?: string, logger=console.log) => (self: Server) =>
                 }
             }
         })
-    })
-    .run();
+    }))
+    ["|>"](A.run);

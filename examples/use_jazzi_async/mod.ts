@@ -1,12 +1,12 @@
-import { Async as A } from "https://deno.land/x/jazzi@v3.0.4/mod.ts"
+import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
 import * as S from '../../core/server.ts'
 import * as R from '../../core/router.ts'
 import * as C from '../../core/config.ts'
 
 const port = 3000
 
-const helloAsync = A.of(({ results, request }: R.HandleInput) => 
-    results.respond(`Hello ${request.hostname}!`)
+const helloAsync = A.from(({ results, request }: R.HandleInput) => 
+    Promise.resolve(results.respond(`Hello ${request.hostname}!`))
 )
 
 const router = R.makeRouter()
