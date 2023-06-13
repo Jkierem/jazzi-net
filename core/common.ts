@@ -1,5 +1,5 @@
-import { Async, map } from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
-import { fromNullish } from "https://deno.land/x/jazzi@v4.0.0/Maybe/mod.ts"
+import { Async, map } from "https://deno.land/x/jazzi@v4.1.0/Async/mod.ts"
+import { fromNullish } from "https://deno.land/x/jazzi@v4.1.0/Maybe/mod.ts"
 import { Status, STATUS_TEXT } from 'https://deno.land/std@0.140.0/http/http_status.ts'
 
 export const simplify = <R,E,A>(self: Async<R,E,A>) => self

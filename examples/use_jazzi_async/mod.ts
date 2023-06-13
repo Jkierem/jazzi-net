@@ -1,4 +1,4 @@
-import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
+import * as A from "https://deno.land/x/jazzi@v4.1.0/Async/mod.ts"
 import * as S from '../../core/server.ts'
 import * as R from '../../core/router.ts'
 import * as C from '../../core/config.ts'

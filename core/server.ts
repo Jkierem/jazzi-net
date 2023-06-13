@@ -1,4 +1,4 @@
-import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
+import * as A from "https://deno.land/x/jazzi@v4.1.0/Async/mod.ts"
 
 export interface HandleEnv { 
     request: Request,
@@ -80,7 +80,7 @@ export const makeTLSServer = () =>  A.require<HTTPSConfig>()
 /**
  * Creates a handle for a server
  */
-export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.of({
+export const makeHandle = (fn: (req: Request) => Response | Promise<Response>) => A.Succeed({
     handle: A.from(({ request }: HandleEnv) => Promise.resolve(fn(request)))
 })
 

@@ -63,7 +63,7 @@ function listen(msg?: string, logger=console.log): <E,A>(self: Async<unknown, E,
 A minimal server would look like this:
 
 ```ts
-import * as S from 'https/deno.land/x/jazzi_net@v1.0.1/core/server.ts';
+import * as S from 'https://deno.land/x/jazzi_net@v1.0.1/core/server.ts';
 
 const handle = S.makeHandle(() => new Response("Hello world!"))
 
@@ -124,8 +124,8 @@ function withHttpFallback = (onFallback?: (e: unknown) => void) => <A>(self: UIO
 A minimal server using config would look like this:
 
 ```ts
-import * as S from 'https/deno.land/x/jazzi_net@v1.0.1/core/server.ts';
-import * as C from 'https/deno.land/x/jazzi_net@v1.0.1/core/config.ts';
+import * as S from 'https://deno.land/x/jazzi_net@v1.0.1/core/server.ts';
+import * as C from 'https://deno.land/x/jazzi_net@v1.0.1/core/config.ts';
 
 const config = C.makeConfig()
     ['|>'](C.withPort(3000))
@@ -141,7 +141,7 @@ S.makeServer()
 The router module is used to add endpoints to the server. It revolves around the `useRoute` function. Usage is as follows:
 
 ```ts
-import * as R from 'https/deno.land/x/jazzi_net@v1.0.1/core/router.ts';
+import * as R from 'https://deno.land/x/jazzi_net@v1.0.1/core/router.ts';
 
 R.makeRouter()
 ['|>'](R.useRoute("GET", "/hello/:name", (req, results) => {
@@ -156,7 +156,7 @@ Unlike the server handle, route handles must return a RouteResult. There are two
 An object with constructors is passed as second argument to route handlers. There are four constructors for RouteResult: continue, continueWith, respond, respondWith:
 
 ```ts
-import * as R from 'https/deno.land/x/jazzi_net@v1.0.1/core/router.ts';
+import * as R from 'https://deno.land/x/jazzi_net@v1.0.1/core/router.ts';
 
 R.RouteResults.continue() // creates a continue result with no continuation
 R.RouteResults.continueWith(x => x) // creates a continue result with the given continuation
@@ -167,7 +167,7 @@ R.RouteResults.respondWith(new Response(...args)) // responds with given respons
 For convenience, there are aliases for `useRoute` for common http methods:
 
 ```ts
-import * as R from 'https/deno.land/x/jazzi_net@v1.0.1/core/router.ts';
+import * as R from 'https://deno.land/x/jazzi_net@v1.0.1/core/router.ts';
 
 R.get(path, handler)     // same as R.useRoute("GET", path, handler)
 R.head(path, handler)    // same as R.useRoute("HEAD", path, handler)
@@ -214,7 +214,7 @@ interface JazziRequest {
 The order in which routes are added matters as this is the order in which routes get evaluated. If no route responds or no route is matched, the router will respond with a fallback. By default, the router has a fallback of responding with `404 Not Found`. If something else is desired, use the fallback option on router creation:
 
 ```ts
-import * as R from 'https/deno.land/x/jazzi_net@v1.0.1/core/router.ts';
+import * as R from 'https://deno.land/x/jazzi_net@v1.0.1/core/router.ts';
 
 R.makeRouter({ fallback: () => new Response("Nothing responded") })
 ```
@@ -226,9 +226,9 @@ The router module also has some utility functions: `useDebug`, `useDebugRoute`, 
 A minimal server with configuration and router looks like this:
 
 ```ts
-import * as S from 'https/deno.land/x/jazzi_net@v1.0.1/core/server.ts';
-import * as R from 'https/deno.land/x/jazzi_net@v1.0.1/core/router.ts';
-import * as C from 'https/deno.land/x/jazzi_net@v1.0.1/core/config.ts';
+import * as S from 'https://deno.land/x/jazzi_net@v1.0.1/core/server.ts';
+import * as R from 'https://deno.land/x/jazzi_net@v1.0.1/core/router.ts';
+import * as C from 'https://deno.land/x/jazzi_net@v1.0.1/core/config.ts';
 
 const router = R.makeRouter()
     ['|>'](R.get("/hello", (_, r) => {

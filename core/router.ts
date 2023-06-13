@@ -1,6 +1,6 @@
-import * as A from "https://deno.land/x/jazzi@v4.0.0/Async/mod.ts"
-import * as M from "https://deno.land/x/jazzi@v4.0.0/Maybe/mod.ts"
-import * as E from "https://deno.land/x/jazzi@v4.0.0/Either/mod.ts"
+import * as A from "https://deno.land/x/jazzi@v4.1.0/Async/mod.ts"
+import * as M from "https://deno.land/x/jazzi@v4.1.0/Maybe/mod.ts"
+import * as E from "https://deno.land/x/jazzi@v4.1.0/Either/mod.ts"
 import { readableStreamFromReader } from "./deps/deno/streams.ts";
 import { join } from "./deps/deno/path.ts";
 import { walk } from "./deps/deno/fs.ts";
